@@ -1,11 +1,13 @@
 package org.example;
 
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpRequest.BodyPublishers;
 import java.net.http.HttpResponse.BodyHandlers;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.time.LocalDate;
@@ -57,36 +59,33 @@ public class DBdemo {
         System.out.println("Remove User Response Status Code: " + deleteResponse.statusCode());
         System.out.println("Remove User Response Body: " + deleteResponse.body());
     }
-    private static void registerProfessional(String preferredUsername, String password, String firstName, String lastName,
+    private static void registerProfessional(String preferredUsername, String firstName, String lastName,
                                              String dob, String email, String phoneNumber, String mailAddress,
-                                             String degree, String institution, String dateOfAward
-                                             ) throws Exception {
+                                             String degree, String institution, String dateOfAward,
+                                             List<String> qualificationCategories, List<String> qualificationKeywords) throws Exception {
+        // Convert lists to a single string each, separated by commas or another delimiter
+        String categories = String.join(",", qualificationCategories);
+        String keywords = String.join(",", qualificationKeywords);
 
+        // Prepare the form parameters as a single string
+        String formParams = String.format("preferredUsername=%s&firstName=%s&lastName=%s&dob=%s&email=%s&phone=%s&mailingAddress=%s" +
+                        "&degree=%s&institution=%s&dateOfAward=%s&qualificationCategories=%s&qualificationKeywords=%s",
+                preferredUsername, firstName, lastName,dob, email, phoneNumber, mailAddress,
+                degree, institution, LocalDate.parse(dateOfAward).toString(), // Ensure dateOfAward is formatted correctly
+                URLEncoder.encode(categories, StandardCharsets.UTF_8.name()), // Encode to ensure special characters are handled
+                URLEncoder.encode(keywords, StandardCharsets.UTF_8.name())); // Encode to ensure special characters are handled
 
-        // New code to create a professional account request with qualifications included
-        JSONObject accountRequestJson = new JSONObject();
-        accountRequestJson.put("preferredUsername", preferredUsername);
-        accountRequestJson.put("password", password);
-        accountRequestJson.put("firstName", firstName);
-        accountRequestJson.put("lastName", lastName);
-        accountRequestJson.put("dob", dob);
-        accountRequestJson.put("email", email);
-        accountRequestJson.put("phone", phoneNumber);
-        accountRequestJson.put("mailingAddress", mailAddress);
-        accountRequestJson.put("degree", degree);
-        accountRequestJson.put("institution", institution);
-        accountRequestJson.put("dateOfAward", dateOfAward);
-
-
+        // Create the HTTP request with form parameters
         HttpRequest postRequest = HttpRequest.newBuilder()
                 .uri(URI.create(BASE_URL + "/professionalAccountRequests/add"))
-                .header("Content-Type", "application/json")
-                .POST(BodyPublishers.ofString(accountRequestJson.toString()))
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .POST(HttpRequest.BodyPublishers.ofString(formParams))
                 .build();
 
-        HttpResponse<String> postResponse = client.send(postRequest, BodyHandlers.ofString());
-        System.out.println("Create Professional Account Request Response Status Code: " + postResponse.statusCode());
-        System.out.println("Create Professional Account Request Response Body: " + postResponse.body());
+        // Send the request and handle the response
+        HttpResponse<String> response = client.send(postRequest, HttpResponse.BodyHandlers.ofString());
+        System.out.println("Response Status Code: " + response.statusCode());
+        System.out.println("Response Body: " + response.body());
     }
 
     private static void getAllProfessionalRequests() throws Exception {
@@ -96,8 +95,33 @@ public class DBdemo {
                 .build();
 
         HttpResponse<String> response = client.send(getRequest, HttpResponse.BodyHandlers.ofString());
-        System.out.println("All Professional Account Requests: " + response.body());
+
+        // Assuming the response body is a JSON array of objects
+        JSONArray requests = new JSONArray(response.body());
+
+        if (requests.length() == 0) {
+            System.out.println("No professional account requests found.");
+            return;
+        }
+
+        for (int i = 0; i < requests.length(); i++) {
+            JSONObject request = requests.getJSONObject(i);
+            // Assuming each request object has a 'preferredUsername' and other attributes you're interested in
+            // Modify the string below to include any other attributes you want to print
+            String requestDetails = String.format("Request #%d: Preferred Username: %s, First Name: %s, Last Name: %s, Email: %s, Phone: %s, Degree: %s",
+                    i + 1,
+                    request.optString("preferredUsername", "N/A"),
+                    request.optString("firstName", "N/A"),
+                    request.optString("lastName", "N/A"),
+                    request.optString("email", "N/A"),
+                    request.optString("phone", "N/A"),
+                    request.optString("degree", "N/A")
+                    // Continue adding fields as needed
+            );
+            System.out.println(requestDetails);
+        }
     }
+
     private static String retrieveProfessionalRequest(Long requestId) throws Exception {
         HttpRequest getRequest = HttpRequest.newBuilder()
                 .uri(URI.create(BASE_URL + "/professionalAccountRequests/" + requestId))
@@ -108,72 +132,64 @@ public class DBdemo {
         System.out.println("Selected Professional Account Request Details: " + response.body());
         return response.body(); // Return the response body for further processing
     }
-    private static void createProfessional(String requestDetails) throws Exception {
-        JSONObject obj = new JSONObject(requestDetails);
-
-        // Extract data from JSON
-        String username = obj.getString("preferredUsername");
-        String password = obj.getString("password");
-        String firstName = obj.getString("firstName");
-        String lastName = obj.getString("lastName");
-        String dob = obj.getString("dob");
-        String email = obj.getString("email");
-        String phoneNumber = obj.getString("phone");
-        String mailAddress = obj.getString("mailingAddress");
-        String degree = obj.getString("degree");
-        String institution = obj.getString("institution");
-        String dateOfAward = obj.getString("dateOfAward");
-
-        // Now use the extracted data to create a professional account
-        // Assuming you have a method to add a professional user, similar to the commented-out registerProfessional method
-        //registerProfessional(username, password, firstName, lastName, dob, email, phoneNumber, mailAddress, degree, institution, dateOfAward);
-        String formParams = "username=" + username +"&password="+ password +"&userType=PROFESSIONAL";
-        HttpRequest postRequest = HttpRequest.newBuilder()
-                .uri(URI.create(BASE_URL + "/user/add"))
-                .header("Content-Type", "application/x-www-form-urlencoded")
-                .POST(BodyPublishers.ofString(formParams))
+    private static void viewProfessionalProfile(String professionalID) throws Exception {
+        // Create the HTTP GET request
+        HttpRequest getRequest = HttpRequest.newBuilder()
+                .uri(URI.create(BASE_URL + "/professional/" + professionalID))
+                .GET()
                 .build();
 
-        HttpResponse<String> postResponse = client.send(postRequest, BodyHandlers.ofString());
-        System.out.println("Add New User Response Status Code: " + postResponse.statusCode());
-        System.out.println("Add New User Response Body: " + postResponse.body());
+        // Send the request and handle the response
+        HttpResponse<String> response = client.send(getRequest, HttpResponse.BodyHandlers.ofString());
 
-        String formParams1 = "username=" + username +"&firstName=" + firstName + "&lastName=" + lastName
-                +"&dob=" + dob + "&email=" + email + "&phoneNumber=" + phoneNumber + "&mailAddress="
-                + mailAddress + "&degree=" + degree + "&institution=" + institution + "&dateOfAward=" + dateOfAward;
-        HttpRequest postRequest1 = HttpRequest.newBuilder()
-                .uri(URI.create(BASE_URL + "/professional/add"))
-                .header("Content-Type", "application/x-www-form-urlencoded")
-                .POST(BodyPublishers.ofString(formParams1))
-                .build();
+        // Check if the response status code is 200 (OK), indicating the profile was successfully retrieved
+        if (response.statusCode() == 200) {
+            // Assuming the response body is a JSON object with the professional's profile details
+            JSONObject profile = new JSONObject(response.body());
 
-        HttpResponse<String> postResponse1 = client.send(postRequest1, BodyHandlers.ofString());
-        System.out.println("Add New Professional Response Status Code: " + postResponse.statusCode());
-        System.out.println("Add New Professional Response Body: " + postResponse1.body());
+            // Extracting basic details from the JSON object
+            String profileDetails = String.format("Professional ID: %s\nFirst Name: %s\nLast Name: %s\nEmail: %s\nPhone Number: %s\nMailing Address: %s\nDegree: %s\nInstitution: %s\nDate Of Award: %s",
+                    professionalID,
+                    profile.optString("firstName", "N/A"),
+                    profile.optString("lastName", "N/A"),
+                    profile.optString("email", "N/A"),
+                    profile.optString("phone", "N/A"),
+                    profile.optString("mailingAddress", "N/A"),
+                    profile.optString("degree", "N/A"),
+                    profile.optString("institution", "N/A"),
+                    profile.optString("dateOfAward", "N/A")
+            );
 
-        // Add payment for the professional
-        LocalDate previousBillingDate = LocalDate.now(); // Today's date
-        LocalDate nextBillingDate = previousBillingDate.plusDays(30); // 30 days from today
+            // Print the basic profile details
+            System.out.println("Professional Profile Details:");
+            System.out.println(profileDetails);
 
-        // Format dates to a string in the format "yyyy-MM-dd"
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-        String formattedPreviousBillingDate = previousBillingDate.format(formatter);
-        String formattedNextBillingDate = nextBillingDate.format(formatter);
-
-        // Now include these formatted dates in JSON
-        String paymentJson = String.format("{\"paymentID\":\"%s\", \"subscriptionSituation\": true, \"paymentBalance\": 50.00, \"nextBillingDate\": \"%s\", " +
-                "\"previousBillingDate\": \"%s\", \"paymentStatus\": \"Active\"}", username, formattedNextBillingDate, formattedPreviousBillingDate);
-
-        HttpRequest postRequest2 = HttpRequest.newBuilder()
-                .uri(URI.create(BASE_URL + "/professionalPayments/add"))
-                .header("Content-Type", "application/json")
-                .POST(BodyPublishers.ofString(paymentJson))
-                .build();
-
-        HttpResponse<String> postResponse2 = client.send(postRequest2, BodyHandlers.ofString());
-        System.out.println("Add New Professional Payment Response Status Code: " + postResponse2.statusCode());
-        System.out.println("Add New Professional Payment Response Body: " + postResponse2.body());
+            // Handling qualifications if they are present as an array
+            if (profile.has("qualifications")) {
+                JSONArray qualifications = profile.getJSONArray("qualifications");
+                if (qualifications.length() > 0) {
+                    System.out.println("Qualifications:");
+                    for (int i = 0; i < qualifications.length(); i++) {
+                        JSONObject qualification = qualifications.getJSONObject(i);
+                        System.out.printf("    %d. Category: %s, Keywords: %s\n",
+                                i + 1,
+                                qualification.optString("category", "N/A"),
+                                qualification.optString("keywords", "N/A")
+                        );
+                        // Add more fields from the qualification object if necessary
+                    }
+                } else {
+                    System.out.println("No qualifications found.");
+                }
+            } else {
+                System.out.println("Qualifications information is not available.");
+            }
+        } else {
+            // If the response status code is not 200, print an error message
+            System.out.println("Failed to retrieve the professional profile. Response Status Code: " + response.statusCode());
+        }
     }
+
     private static void createNewStaffAccount(String username, String password, String firstName, String lastName, String dob, String email, String phoneNumber) throws Exception {
         // Create a new user with userType STAFF
         String userParams = String.format("username=%s&password=%s&userType=%s", username, password, "STAFF");
@@ -252,28 +268,34 @@ public class DBdemo {
         System.out.println("Add New Professional Payment Response Body: " + postResponse2.body());
     }
     */
-    private static void registerEmployer(String preferredUsername, String password, String companyName, String registrationNumber,
-                                         String industry, String size, String primaryContactFirstName, String primaryContactLastName,
-                                         String primaryContactEmail, String primaryContactPhoneNumber, String primaryContactMailAddress,
-                                         String websiteLink) throws Exception {
-        // New code to create an employer account request
-        String accountRequestJson = String.format("{\"preferredUsername\":\"%s\", \"password\":\"%s\", \"companyName\":\"%s\", " +
-                        "\"registrationNumber\":\"%s\", \"industry\":\"%s\", \"size\":\"%s\", \"primaryContactFirstName\":\"%s\", " +
-                        "\"primaryContactLastName\":\"%s\", \"primaryContactEmail\":\"%s\", \"primaryContactPhoneNumber\":\"%s\", " +
-                        "\"primaryContactMailAddress\":\"%s\", \"websiteLink\":\"%s\"}",
-                preferredUsername, password, companyName, registrationNumber, industry, size, primaryContactFirstName,
-                primaryContactLastName, primaryContactEmail, primaryContactPhoneNumber, primaryContactMailAddress, websiteLink);
+    private static void registerEmployer(String preferredUsername, String companyName,
+                                         String registrationNumber, String industry, String size,
+                                         String primaryContactFirstName, String primaryContactLastName,
+                                         String primaryContactEmail, String primaryContactPhoneNumber,
+                                         String primaryContactMailAddress, String websiteLink) throws Exception {
+        // Prepare the form parameters as a single string
+        String formParams = String.format(
+                "preferredUsername=%s&companyName=%s&registrationNumber=%s&industry=%s&size=%s" +
+                        "&primaryContactFirstName=%s&primaryContactLastName=%s&primaryContactEmail=%s" +
+                        "&primaryContactPhoneNumber=%s&primaryContactMailAddress=%s&websiteLink=%s",
+                preferredUsername, companyName, registrationNumber, industry, size,
+                primaryContactFirstName, primaryContactLastName, primaryContactEmail,
+                primaryContactPhoneNumber, primaryContactMailAddress, websiteLink
+        );
 
+        // Create the HTTP request with form parameters
         HttpRequest postRequest = HttpRequest.newBuilder()
                 .uri(URI.create(BASE_URL + "/employerAccountRequests/add"))
-                .header("Content-Type", "application/json")
-                .POST(BodyPublishers.ofString(accountRequestJson))
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .POST(HttpRequest.BodyPublishers.ofString(formParams))
                 .build();
 
-        HttpResponse<String> postResponse = client.send(postRequest, BodyHandlers.ofString());
-        System.out.println("Create Employer Account Request Response Status Code: " + postResponse.statusCode());
-        System.out.println("Create Employer Account Request Response Body: " + postResponse.body());
+        // Send the request and handle the response
+        HttpResponse<String> response = client.send(postRequest, HttpResponse.BodyHandlers.ofString());
+        System.out.println("Response Status Code: " + response.statusCode());
+        System.out.println("Response Body: " + response.body());
     }
+
     private static void getAllEmployerRequests() throws Exception {
         HttpRequest getRequest = HttpRequest.newBuilder()
                 .uri(URI.create(BASE_URL + "/employerAccountRequests/all"))
@@ -281,8 +303,37 @@ public class DBdemo {
                 .build();
 
         HttpResponse<String> response = client.send(getRequest, HttpResponse.BodyHandlers.ofString());
-        System.out.println("All Employer Account Requests: " + response.body());
+
+        // Assuming the response body is a JSON array of objects
+        JSONArray requests = new JSONArray(response.body());
+
+        if (requests.length() == 0) {
+            System.out.println("No employer account requests found.");
+            return;
+        }
+
+        for (int i = 0; i < requests.length(); i++) {
+            JSONObject request = requests.getJSONObject(i);
+            // Assuming each request object has 'preferredUsername', 'companyName', and other attributes
+            // Modify the string below to include any other attributes you want to print
+            String requestDetails = String.format("Request #%d: Preferred Username: %s, Company Name: %s, Registration Number: %s, Industry: %s, Size: %s, Primary Contact First Name: %s, Primary Contact Last Name: %s, Primary Contact Email: %s, Primary Contact Phone Number: %s, Website Link: %s",
+                    i + 1,
+                    request.optString("preferredUsername", "N/A"),
+                    request.optString("companyName", "N/A"),
+                    request.optString("registrationNumber", "N/A"),
+                    request.optString("industry", "N/A"),
+                    request.optString("size", "N/A"),
+                    request.optString("primaryContactFirstName", "N/A"),
+                    request.optString("primaryContactLastName", "N/A"),
+                    request.optString("primaryContactEmail", "N/A"),
+                    request.optString("primaryContactPhoneNumber", "N/A"),
+                    request.optString("websiteLink", "N/A")
+                    // Continue adding fields as needed
+            );
+            System.out.println(requestDetails);
+        }
     }
+
     private static String retrieveEmployerRequest(Long requestId) throws Exception {
         HttpRequest getRequest = HttpRequest.newBuilder()
                 .uri(URI.create(BASE_URL + "/employerAccountRequests/" + requestId))
@@ -293,6 +344,46 @@ public class DBdemo {
         System.out.println("Selected Employer Account Request Details: " + response.body());
         return response.body(); // Return the response body for further processing
     }
+    private static void viewEmployerProfile(String employerID) throws Exception {
+        // Create the HTTP GET request
+        HttpRequest getRequest = HttpRequest.newBuilder()
+                .uri(URI.create(BASE_URL + "/employer/" + employerID))
+                .GET()
+                .build();
+
+        // Send the request and handle the response
+        HttpResponse<String> response = client.send(getRequest, HttpResponse.BodyHandlers.ofString());
+
+        // Check if the response status code is 200 (OK), indicating the profile was successfully retrieved
+        if (response.statusCode() == 200) {
+            // Assuming the response body is a JSON object with the employer's profile details
+            JSONObject profile = new JSONObject(response.body());
+
+            // Extracting details from the JSON object
+            String profileDetails = String.format("Employer ID: %s\nCompany Name: %s\nRegistration Number: %s\nIndustry: %s\nSize: %s\nPrimary Contact First Name: %s\nPrimary Contact Last Name: %s\nPrimary Contact Email: %s\nPrimary Contact Phone Number: %s\nPrimary Contact Mailing Address: %s\nWebsite Link: %s",
+                    employerID,
+                    profile.optString("companyName", "N/A"),
+                    profile.optString("registrationNumber", "N/A"),
+                    profile.optString("industry", "N/A"),
+                    profile.optString("size", "N/A"),
+                    profile.optString("primaryContactFirstName", "N/A"),
+                    profile.optString("primaryContactLastName", "N/A"),
+                    profile.optString("primaryContactEmail", "N/A"),
+                    profile.optString("primaryContactPhoneNumber", "N/A"),
+                    profile.optString("primaryContactMailAddress", "N/A"),
+                    profile.optString("websiteLink", "N/A")
+                    // Add more fields as needed
+            );
+
+            // Print the employer profile details
+            System.out.println("Employer Profile Details:");
+            System.out.println(profileDetails);
+        } else {
+            // If the response status code is not 200, print an error message
+            System.out.println("Failed to retrieve the employer profile. Response Status Code: " + response.statusCode());
+        }
+    }
+
     private static void createEmployer(String requestDetails) throws Exception {
         JSONObject obj = new JSONObject(requestDetails);
 
@@ -419,35 +510,36 @@ public class DBdemo {
     */
     private static void updateProfessional(String professionalID, String firstName, String lastName,
                                            String dob, String email, String phoneNumber, String mailAddress,
-                                           String degree, String institution, String dateOfAward) throws Exception {
-        // Prepare form parameters
-        String formParams = "firstName=" + firstName +
-                "&lastName=" + lastName +
-                "&dob=" + dob +
-                "&email=" + email +
-                "&phoneNumber=" + phoneNumber +
-                "&mailAddress=" + mailAddress +
-                "&degree=" + degree +
-                "&institution=" + institution +
-                "&dateOfAward=" + dateOfAward;
+                                           String degree, String institution, String dateOfAward,
+                                           List<String> qualificationCategories, List<String> qualificationKeywords) throws Exception {
+        // Convert lists to a single string each, separated by commas or another delimiter
+        String categories = String.join(",", qualificationCategories);
+        String keywords = String.join(",", qualificationKeywords);
 
-        // Encode the form parameters as needed to ensure they are correctly interpreted by the server
-        // Note: You might need to URL encode the parameters if they include spaces or special characters
 
-        // Create HTTP PUT request
+        // Prepare the form parameters, including encoded qualifications
+        String formParams = String.format(
+                "firstName=%s&lastName=%s&dob=%s&email=%s&phoneNumber=%s&mailAddress=%s&degree=%s&institution=%s&dateOfAward=%s&qualificationCategories=%s&qualificationKeywords=%s",
+                firstName, lastName, dob, email, phoneNumber, mailAddress, degree, institution, dateOfAward,
+                URLEncoder.encode(categories, StandardCharsets.UTF_8.name()), // Encode to ensure special characters are handled
+                URLEncoder.encode(keywords, StandardCharsets.UTF_8.name())); // Encode to ensure special characters are handled
+
+
+        // Create the HTTP PUT request
         HttpRequest putRequest = HttpRequest.newBuilder()
-                .uri(URI.create(BASE_URL + "/professional/" + professionalID)) // Use the professionalID to specify the update endpoint
+                .uri(URI.create(BASE_URL + "/professional/" + professionalID))
                 .header("Content-Type", "application/x-www-form-urlencoded")
                 .PUT(HttpRequest.BodyPublishers.ofString(formParams))
                 .build();
 
         // Send the request and get the response
-        HttpResponse<String> putResponse = client.send(putRequest, HttpResponse.BodyHandlers.ofString());
+        HttpResponse<String> response = client.send(putRequest, HttpResponse.BodyHandlers.ofString());
 
         // Print response details
-        System.out.println("Update Professional Response Status Code: " + putResponse.statusCode());
-        System.out.println("Update Professional Response Body: " + putResponse.body());
+        System.out.println("Update Professional Response Status Code: " + response.statusCode());
+        System.out.println("Update Professional Response Body: " + response.body());
     }
+
 
 
     private static void updateEmployer(String employerID, String companyName, String registrationNumber,
@@ -666,8 +758,6 @@ public class DBdemo {
                     System.out.println("Registering a new professional");
                     System.out.println("Enter preferred username: ");
                     String preferredUsername = sc.nextLine();
-                    System.out.println("Enter password: ");
-                    String password = sc.nextLine();
                     System.out.println("Enter First Name: ");
                     String firstName = sc.nextLine();
                     System.out.println("Enter Last Name: ");
@@ -686,19 +776,27 @@ public class DBdemo {
                     System.out.println("Enter Institution: ");
                     String institution = sc.nextLine();
                     //Example Date of Award input: 2025-05-01
-                    System.out.println("Enter Date of Award: ");
+                    System.out.println("Enter Date of Award: (e.g., 2025-05-01) ");
                     String dateOfAward = sc.nextLine();
 
-
-                    registerProfessional(preferredUsername, password, firstName, lastName, dob, email, phoneNumber, mailAddress, degree, institution, dateOfAward);
+                    System.out.println("Enter number of qualifications: ");
+                    int numQualifications = sc.nextInt();
+                    sc.nextLine(); // Consume the newline left-over
+                    List<String> qualificationCategories = new ArrayList<>();
+                    List<String> qualificationKeywords = new ArrayList<>();
+                    for (int i = 0; i < numQualifications; i++) {
+                        System.out.println("Enter qualification category " + (i + 1) + ": ");
+                        qualificationCategories.add(sc.nextLine());
+                        System.out.println("Enter qualification keyword " + (i + 1) + ": ");
+                        qualificationKeywords.add(sc.nextLine());
+                    }
+                    registerProfessional(preferredUsername, firstName, lastName, dob, email, phoneNumber, mailAddress, degree, institution, dateOfAward, qualificationCategories, qualificationKeywords);
                     break;
                 }
                 case 2: {
                     System.out.println("Register a new employer");
                     System.out.println("Enter username: ");
                     String preferredUsername  = sc.nextLine();
-                    System.out.println("Enter password: ");
-                    String password = sc.nextLine();
                     System.out.println("Enter Company Name: ");
                     String companyName = sc.nextLine();
                     System.out.println("Enter Registration Number: ");
@@ -720,7 +818,7 @@ public class DBdemo {
                     String primaryContactMailAddress = sc.nextLine();
                     System.out.println("Enter Website Link: ");
                     String websiteLink = sc.nextLine();
-                    registerEmployer(preferredUsername , password, companyName, registrationNumber, industry,
+                    registerEmployer(preferredUsername , companyName, registrationNumber, industry,
                             size, primaryContactFirstName, primaryContactLastName, primaryContactEmail, primaryContactPhoneNumber,
                             primaryContactMailAddress, websiteLink);
                     break;
@@ -733,7 +831,7 @@ public class DBdemo {
                     String firstName = sc.nextLine();
                     System.out.println("Enter Last Name: ");
                     String lastName = sc.nextLine();
-                    System.out.println("Enter Date of Birth (e.g., 1997-11-17): ");
+                    System.out.println("Enter Date of Birth (YYYY-MM-DD): ");
                     String dob = sc.nextLine();
                     System.out.println("Enter Email: ");
                     String email = sc.nextLine();
@@ -745,12 +843,27 @@ public class DBdemo {
                     String degree = sc.nextLine();
                     System.out.println("Enter Institution: ");
                     String institution = sc.nextLine();
-                    System.out.println("Enter Date of Award (e.g., 2025-05-01): ");
+                    System.out.println("Enter Date of Award (YYYY-MM-DD): ");
                     String dateOfAward = sc.nextLine();
 
-                    updateProfessional(professionalID, firstName, lastName, dob, email, phoneNumber, mailAddress, degree, institution, dateOfAward);
+                    // Qualifications input
+                    System.out.println("Enter number of qualifications: ");
+                    int numQualifications = sc.nextInt();
+                    sc.nextLine(); // Consume the newline left-over
+                    List<String> qualificationCategories = new ArrayList<>();
+                    List<String> qualificationKeywords = new ArrayList<>();
+                    for (int i = 0; i < numQualifications; i++) {
+                        System.out.println("Enter qualification category for qualification " + (i + 1) + ": ");
+                        qualificationCategories.add(sc.nextLine());
+                        System.out.println("Enter qualification keywords (comma-separated) for qualification " + (i + 1) + ": ");
+                        qualificationKeywords.add(sc.nextLine());
+                    }
+
+                    updateProfessional(professionalID, firstName, lastName, dob, email, phoneNumber, mailAddress, degree,
+                            institution, dateOfAward, qualificationCategories, qualificationKeywords);
                     break;
                 }
+
                 case 4: {
                     System.out.println("Modify a employer information: ");
                     System.out.println("Enter employerID: ");
@@ -926,7 +1039,7 @@ public class DBdemo {
 
                     // Step 3: Create a professional account based on the retrieved request
                     System.out.println("Creating a professional account based on the request...");
-                    createProfessional(requestDetails);
+//                    createProfessional(requestDetails);
 
                     // Optionally, retrieve and display the updated Users table to show the new account
                     System.out.println("Retrieving updated Users table...");
@@ -1043,10 +1156,33 @@ public class DBdemo {
                     getAllUsers();
                     break;
                 }
+                case 20:
+                {
+                    System.out.println("Retrieving all professional account requests...");
+                    getAllProfessionalRequests();
+                    break;
+                }
+                case 21: {
+                    System.out.println("Retrieving all employer account requests...");
+                    getAllEmployerRequests();
+                    break;
+                }
+                case 22: {
+                    System.out.println("View professional information:");
+                    System.out.println("Enter professional ID: ");
+                    String professionalID = sc.nextLine();
+                    viewProfessionalProfile(professionalID);
+                    break;
+                }
+                case 23: {
+                    System.out.println("View Employer information:");
+                    System.out.println("Enter employer ID: ");
+                    String professionalID = sc.nextLine();
+                    viewEmployerProfile(professionalID);
+                    break;
+                }
 
-
-
-                default:
+                    default:
                     System.out.println("Exiting!");
                     System.exit(0);
                     break;
