@@ -741,6 +741,54 @@ public class DBdemo {
         System.out.println("Retrieve Employer Deletion Request Response Status Code: " + getResponse.statusCode());
         System.out.println("Retrieve Employer Deletion Request Response Body: " + getResponse.body());
     }
+    public static void initiateMatchRequest(String professionalID) throws Exception {
+        HttpClient client = HttpClient.newHttpClient();
+        String formParams = "professionalID=" + URLEncoder.encode(professionalID, StandardCharsets.UTF_8);
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("http://localhost:8080/matchRequest/add"))
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .POST(HttpRequest.BodyPublishers.ofString(formParams))
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+        if (response.statusCode() == 200 || response.statusCode() == 201) {
+            System.out.println("Match request successfully created: " + response.body());
+        } else {
+            System.out.println("Failed to create match request. Status code: " + response.statusCode());
+        }
+    }
+    public static void showAllMatchRequests() throws Exception {
+        HttpClient client = HttpClient.newHttpClient();
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("http://localhost:8080/matchRequest"))
+                .GET()
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+        if (response.statusCode() == 200) {
+            JSONArray matchRequests = new JSONArray(response.body());
+            if (matchRequests.length() == 0) {
+                System.out.println("No match requests found.");
+                return;
+            }
+            for (int i = 0; i < matchRequests.length(); i++) {
+                JSONObject matchRequest = matchRequests.getJSONObject(i);
+                String displayText = String.format("Match Request ID: %d, Professional ID: %s, Status: %s, Matched By Staff ID: %s",
+                        matchRequest.getLong("matchRequestID"),
+                        matchRequest.getJSONObject("requestBy").getString("professionalID"),
+                        matchRequest.getString("status"),
+                        matchRequest.optString("matchedByStaffID", "Not yet matched"));
+                System.out.println(displayText);
+            }
+        } else {
+            System.out.println("Failed to retrieve match requests. Status code: " + response.statusCode());
+        }
+    }
+
+
+
 
     public static void main(String[] args) throws Exception {
         //addNewUser();
@@ -892,6 +940,13 @@ public class DBdemo {
                     updateEmployer(employerID, companyName, registrationNumber, industry,
                             size, primaryContactFirstName, primaryContactLastName, primaryContactEmail, primaryContactPhoneNumber,
                             primaryContactMailAddress, websiteLink);
+                    break;
+                }
+                case 5: {
+                    System.out.println("Initiating a match request");
+                    System.out.println("Enter Professional ID to initiate match request:  ");
+                    String professionalID = sc.nextLine();
+                    initiateMatchRequest(professionalID);
                     break;
                 }
                 case 7: {
@@ -1181,14 +1236,23 @@ public class DBdemo {
                     viewEmployerProfile(professionalID);
                     break;
                 }
-
-                    default:
+                case 24: {
+                    System.out.println("List of Match Request");
+                    showAllMatchRequests();
+                    break;
+                }
+                default: {
                     System.out.println("Exiting!");
                     System.exit(0);
                     break;
+                }
             }
+
+
         }
 
 
     }
+
+
 }
